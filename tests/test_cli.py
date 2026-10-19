@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
 
 from gesture_media_control import cli
@@ -29,6 +30,20 @@ class FakeBackend:
         return CommandResult(0)
 
 
+class StubAssistant:
+    def __init__(self) -> None:
+        self.started = False
+        self.stopped = False
+        self.wake_description = "Vosk (hey lenovo, ok lenovo)"
+
+    def start(self) -> bool:
+        self.started = True
+        return True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
 class StubApp:
     def __init__(
         self, players=(), statuses=None, preferred=None, override=None, capabilities=None
@@ -43,7 +58,7 @@ class StubApp:
             wake_enabled=True,
             session_timeout_seconds=10.0,
         )
-        self.assistant = SimpleNamespace(wake_description="Vosk (hey lenovo, ok lenovo)")
+        self.assistant = StubAssistant()
 
     def status_line(self) -> str:
         return "State: Idle | Last command: — | Target: auto"
@@ -133,6 +148,7 @@ def test_parser_accepts_documented_flags() -> None:
     assert args.log_level == "DEBUG"
     assert args.no_wake is False
     assert args.wake_engine is None
+    assert args.daemon is False
 
 
 def test_parser_accepts_wake_flags() -> None:
@@ -140,6 +156,20 @@ def test_parser_accepts_wake_flags() -> None:
 
     assert args.no_wake is True
     assert args.wake_engine == "vosk"
+
+
+def test_run_service_starts_and_stops_until_signalled() -> None:
+    app = StubApp(["spotify"])
+    stop = threading.Event()
+    stop.set()
+    output: list[str] = []
+
+    code = cli.run_service(app, output=output.append, stop_event=stop, install_signals=False)
+
+    assert code == 0
+    assert app.assistant.started is True
+    assert app.assistant.stopped is True
+    assert any("Voice Media Controller" in line for line in output)
 
 
 def test_diagnose_reports_capabilities() -> None:

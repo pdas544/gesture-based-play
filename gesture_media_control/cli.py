@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import sys
+import threading
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
@@ -59,6 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Wake-word engine (default: auto)",
     )
     parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help="Run headless (no console REPL), suitable for systemd",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -71,7 +78,9 @@ def _stamp() -> str:
     return datetime.now().strftime(DATE_FORMAT)
 
 
-def print_banner(app: Application, output: Callable[[str], None]) -> None:
+def print_banner(
+    app: Application, output: Callable[[str], None], *, interactive: bool = True
+) -> None:
     output("=" * 60)
     output("Voice Media Controller - Ready")
     output("=" * 60)
@@ -83,7 +92,8 @@ def print_banner(app: Application, output: Callable[[str], None]) -> None:
     output("  - 'volume up' / 'louder'   -> Increase volume")
     output("  - 'volume down' / 'softer' -> Decrease volume")
     output("")
-    output("Keyboard controls: 't' cycle target, 'q' quit, Ctrl+C quit")
+    if interactive:
+        output("Keyboard controls: 't' cycle target, 'q' quit, Ctrl+C quit")
     output("=" * 60)
 
     if app.config.wake_enabled:
@@ -221,6 +231,42 @@ def run(
     return 0
 
 
+def run_service(
+    app: Application,
+    *,
+    output: Callable[[str], None] = print,
+    stop_event: threading.Event | None = None,
+    install_signals: bool = True,
+) -> int:
+    """Run headless until SIGINT/SIGTERM (used by the systemd unit)."""
+    print_banner(app, output, interactive=False)
+
+    if not app.assistant.start():
+        output("Voice recognition could not start.")
+        return 1
+
+    stop = stop_event if stop_event is not None else threading.Event()
+    previous: dict[int, object] = {}
+
+    def _request_stop(signum: int, _frame: object) -> None:
+        logger.info("Received signal %s; shutting down.", signum)
+        stop.set()
+
+    if install_signals and threading.current_thread() is threading.main_thread():
+        for signame in (signal.SIGINT, signal.SIGTERM):
+            previous[signame] = signal.signal(signame, _request_stop)
+
+    try:
+        while not stop.wait(0.5):
+            pass
+    finally:
+        for signame, handler in previous.items():
+            signal.signal(signame, handler)
+        app.assistant.stop()
+        output("Exiting. Goodbye!")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     configure_logging(args.log_level)
@@ -244,4 +290,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.diagnose:
         run_diagnose(app, print)
         return 0
+    if args.daemon:
+        return run_service(app)
     return run(app)

@@ -1,0 +1,18 @@
+[Unit]
+Description=Voice Media Control wake-word assistant
+After=graphical-session.target sound.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Adjust these paths if the repository lives elsewhere.
+WorkingDirectory=%h/Downloads/personal/gesture-based-play
+ExecStart=%h/Downloads/personal/gesture-based-play/.venv/bin/python -m gesture_media_control --daemon
+Environment=PYTHONUNBUFFERED=1
+Environment=VMC_WAKE_ENGINE=auto
+Environment=VMC_WAKE_MODELS=hey_jarvis
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
