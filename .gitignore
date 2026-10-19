@@ -1,8 +1,28 @@
-__pycache__
+# Python
+__pycache__/
 *.py[cod]
-node_modules
-dist
-*.log
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Secrets / local config
 .env
-.vscode
-.venv
+*.log

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gesture-media-control"
+version = "0.2.0"
+description = "Control Linux media playback with voice commands via Vosk and playerctl."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+author = [
+    { name = "Priyabrata Das" },
+]
+dependencies = [
+    "vosk>=0.3.45",
+    "sounddevice>=0.4.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+voice-media-control = "gesture_media_control.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gesture_media_control"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["gesture_media_control", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
