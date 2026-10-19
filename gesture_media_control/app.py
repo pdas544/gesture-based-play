@@ -19,6 +19,7 @@ from .voice import (
     default_engine_factory,
     default_stream_factory,
 )
+from .volume import VolumeBackend, build_volume_backend
 
 
 @dataclass
@@ -32,6 +33,7 @@ class Application:
     state: StateStore
     recognizer: VoiceCommandRecognizer
     controller: MediaController
+    volume_backend: VolumeBackend
 
     def target_label(self) -> str:
         return (
@@ -71,11 +73,18 @@ def build_application(
     )
     matcher = IntentMatcher()
     state = StateStore()
+    volume_backend = build_volume_backend(
+        config.volume_backend,
+        backend=backend,
+        resolver=resolver,
+        step_percent=config.volume_step_percent,
+    )
     controller = MediaController(
         backend,
         resolver,
         matcher,
         state,
+        volume_backend=volume_backend,
         guard_seconds=config.transition_guard_seconds,
     )
     recognizer = VoiceCommandRecognizer(
@@ -92,4 +101,5 @@ def build_application(
         state=state,
         recognizer=recognizer,
         controller=controller,
+        volume_backend=volume_backend,
     )

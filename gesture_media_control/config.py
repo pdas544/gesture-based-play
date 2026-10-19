@@ -77,6 +77,8 @@ class Config:
     transition_guard_seconds: float = 0.5
     preferred_player: str | None = None
     prefer_focused_player: bool = True
+    volume_backend: str = "auto"  # auto | system | mpris
+    volume_step_percent: int = 5
 
     @classmethod
     def from_env(cls) -> Config:
@@ -89,4 +91,6 @@ class Config:
             transition_guard_seconds=_env_float(f"{ENV_PREFIX}TRANSITION_GUARD", 0.5),
             preferred_player=_env_str(f"{ENV_PREFIX}PREFERRED_PLAYER", None),
             prefer_focused_player=_env_bool(f"{ENV_PREFIX}PREFER_FOCUSED_PLAYER", True),
+            volume_backend=_env_str(f"{ENV_PREFIX}VOLUME_BACKEND", "auto") or "auto",
+            volume_step_percent=_env_int(f"{ENV_PREFIX}VOLUME_STEP_PERCENT", 5),
         )

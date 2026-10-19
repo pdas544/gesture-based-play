@@ -9,6 +9,7 @@ from collections.abc import Callable
 from .intents import Intent, IntentMatcher
 from .players import PlayerBackend, PlayerResolver
 from .state import StateStore
+from .volume import VOLUME_INTENTS, VolumeBackend
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class MediaController:
         matcher: IntentMatcher,
         state: StateStore,
         *,
+        volume_backend: VolumeBackend | None = None,
         guard_seconds: float = 0.5,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -30,6 +32,7 @@ class MediaController:
         self._resolver = resolver
         self._matcher = matcher
         self._state = state
+        self._volume_backend = volume_backend
         self._guard_seconds = guard_seconds
         self._clock = clock
 
@@ -45,6 +48,9 @@ class MediaController:
         now = self._clock()
         if self._state.should_suppress(intent, now, self._guard_seconds):
             return False
+
+        if intent in VOLUME_INTENTS and self._volume_backend is not None:
+            return self._change_volume(intent, now, text, is_partial)
 
         if not self._backend.is_available():
             logger.warning("Cannot send %s: playerctl is not installed.", intent.value)
@@ -85,4 +91,27 @@ class MediaController:
             )
         else:
             logger.info("Executed %s on %s", intent.value, target)
+        return True
+
+    def _change_volume(self, intent: Intent, now: float, text: str, is_partial: bool) -> bool:
+        assert self._volume_backend is not None
+        result = self._volume_backend.change(intent)
+        if not result.ok:
+            logger.error(
+                "Volume change failed for %s: %s",
+                intent.value,
+                result.stderr.strip() or f"rc={result.returncode}",
+            )
+            return False
+
+        self._state.record_action(intent, now)
+        if text:
+            logger.info(
+                'Recognized "%s" (%s) -> %s (system volume)',
+                text,
+                "partial" if is_partial else "final",
+                intent.value,
+            )
+        else:
+            logger.info("Executed %s (system volume)", intent.value)
         return True
