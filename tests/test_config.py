@@ -11,6 +11,14 @@ def test_from_env_applies_overrides(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("VMC_TRANSITION_GUARD", "1.5")
     monkeypatch.setenv("VMC_PREFERRED_PLAYER", "spotify")
     monkeypatch.setenv("VMC_PREFER_FOCUSED_PLAYER", "false")
+    monkeypatch.setenv("VMC_WAKE_ENABLED", "false")
+    monkeypatch.setenv("VMC_WAKE_ENGINE", "vosk")
+    monkeypatch.setenv("VMC_WAKE_MODELS", "hey_jarvis, alexa")
+    monkeypatch.setenv("VMC_WAKE_THRESHOLD", "0.7")
+    monkeypatch.setenv("VMC_WAKE_PHRASES", "hey lenovo, ok lenovo")
+    monkeypatch.setenv("VMC_SESSION_TIMEOUT", "12")
+    monkeypatch.setenv("VMC_GREETING", "Hello there")
+    monkeypatch.setenv("VMC_TTS_COOLDOWN", "0.25")
 
     config = Config.from_env()
 
@@ -20,6 +28,14 @@ def test_from_env_applies_overrides(monkeypatch, tmp_path) -> None:
     assert config.transition_guard_seconds == 1.5
     assert config.preferred_player == "spotify"
     assert config.prefer_focused_player is False
+    assert config.wake_enabled is False
+    assert config.wake_engine == "vosk"
+    assert config.wake_models == ("hey_jarvis", "alexa")
+    assert config.wake_threshold == 0.7
+    assert config.wake_phrases == ("hey lenovo", "ok lenovo")
+    assert config.session_timeout_seconds == 12.0
+    assert config.greeting == "Hello there"
+    assert config.tts_cooldown_seconds == 0.25
 
 
 def test_from_env_defaults(monkeypatch) -> None:
@@ -30,6 +46,14 @@ def test_from_env_defaults(monkeypatch) -> None:
         "VMC_TRANSITION_GUARD",
         "VMC_PREFERRED_PLAYER",
         "VMC_PREFER_FOCUSED_PLAYER",
+        "VMC_WAKE_ENABLED",
+        "VMC_WAKE_ENGINE",
+        "VMC_WAKE_MODELS",
+        "VMC_WAKE_THRESHOLD",
+        "VMC_WAKE_PHRASES",
+        "VMC_SESSION_TIMEOUT",
+        "VMC_GREETING",
+        "VMC_TTS_COOLDOWN",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -41,6 +65,14 @@ def test_from_env_defaults(monkeypatch) -> None:
     assert config.preferred_player is None
     assert config.prefer_focused_player is True
     assert config.model_path.name == "vosk-model-small-en-us-0.15"
+    assert config.wake_enabled is True
+    assert config.wake_engine == "auto"
+    assert config.wake_models == ("hey_jarvis",)
+    assert config.wake_threshold == 0.5
+    assert config.wake_phrases == ("hey lenovo", "ok lenovo")
+    assert config.session_timeout_seconds == 10.0
+    assert config.greeting == "Hi, how can I help"
+    assert config.tts_cooldown_seconds == 0.5
 
 
 def test_invalid_integer_override_raises(monkeypatch) -> None:

@@ -40,7 +40,10 @@ class StubApp:
             prefer_focused_player=True,
             volume_backend="auto",
             volume_step_percent=5,
+            wake_enabled=True,
+            session_timeout_seconds=10.0,
         )
+        self.assistant = SimpleNamespace(wake_description="Vosk (hey lenovo, ok lenovo)")
 
     def status_line(self) -> str:
         return "State: Idle | Last command: — | Target: auto"
@@ -117,6 +120,7 @@ def test_banner_mentions_commands_and_players() -> None:
 
     assert "Voice Media Controller" in text
     assert "spotify" in text
+    assert "Wake word: Vosk" in text
 
 
 def test_parser_accepts_documented_flags() -> None:
@@ -127,6 +131,15 @@ def test_parser_accepts_documented_flags() -> None:
     assert args.player == "vlc"
     assert args.no_focused is True
     assert args.log_level == "DEBUG"
+    assert args.no_wake is False
+    assert args.wake_engine is None
+
+
+def test_parser_accepts_wake_flags() -> None:
+    args = cli.build_parser().parse_args(["--no-wake", "--wake-engine", "vosk"])
+
+    assert args.no_wake is True
+    assert args.wake_engine == "vosk"
 
 
 def test_diagnose_reports_capabilities() -> None:
@@ -142,6 +155,8 @@ def test_diagnose_reports_capabilities() -> None:
     text = "\n".join(output)
     assert "playerctl: /usr/bin/playerctl" in text
     assert "volume backend: auto" in text
+    assert "wake word: Vosk" in text
+    assert "session timeout: 10.0s" in text
     assert "brave.instance2: Paused" in text
     assert "can_go_next=False" in text
 

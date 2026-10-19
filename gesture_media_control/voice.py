@@ -20,6 +20,7 @@ from .speech import SpeechEngine
 logger = logging.getLogger(__name__)
 
 PhraseCallback = Callable[[str, bool], None]
+FrameCallback = Callable[[bytes], None]
 
 
 class AudioStream(Protocol):
@@ -74,10 +75,12 @@ class VoiceCommandRecognizer:
         *,
         engine_factory: EngineFactory,
         stream_factory: StreamFactory,
+        on_frame: FrameCallback | None = None,
         stop_timeout: float = 2.0,
     ) -> None:
         self._config = config
         self._on_phrase = on_phrase
+        self._on_frame = on_frame
         self._engine_factory = engine_factory
         self._stream_factory = stream_factory
         self._stop_timeout = stop_timeout
@@ -146,6 +149,8 @@ class VoiceCommandRecognizer:
                 data = self._audio_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
+            if self._on_frame is not None:
+                self._on_frame(data)
             for recognition in engine.ingest(data):
                 self._on_phrase(recognition.text, recognition.is_partial)
 

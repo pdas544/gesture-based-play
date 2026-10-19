@@ -66,6 +66,13 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 @dataclass(frozen=True)
 class Config:
     """Immutable application configuration."""
@@ -80,9 +87,14 @@ class Config:
     volume_backend: str = "auto"  # auto | system | mpris
     volume_step_percent: int = 5
     wake_enabled: bool = True
+    wake_engine: str = "auto"  # auto | openwakeword | vosk
+    wake_models: tuple[str, ...] = ("hey_jarvis",)
+    wake_threshold: float = 0.5
+    wake_phrases: tuple[str, ...] = ("hey lenovo", "ok lenovo")
     session_timeout_seconds: float = 10.0
     greeting: str = "Hi, how can I help"
     tts_command: str = "spd-say"
+    tts_cooldown_seconds: float = 0.5
 
     @classmethod
     def from_env(cls) -> Config:
@@ -98,8 +110,13 @@ class Config:
             volume_backend=_env_str(f"{ENV_PREFIX}VOLUME_BACKEND", "auto") or "auto",
             volume_step_percent=_env_int(f"{ENV_PREFIX}VOLUME_STEP_PERCENT", 5),
             wake_enabled=_env_bool(f"{ENV_PREFIX}WAKE_ENABLED", True),
+            wake_engine=_env_str(f"{ENV_PREFIX}WAKE_ENGINE", "auto") or "auto",
+            wake_models=_env_list(f"{ENV_PREFIX}WAKE_MODELS", ("hey_jarvis",)),
+            wake_threshold=_env_float(f"{ENV_PREFIX}WAKE_THRESHOLD", 0.5),
+            wake_phrases=_env_list(f"{ENV_PREFIX}WAKE_PHRASES", ("hey lenovo", "ok lenovo")),
             session_timeout_seconds=_env_float(f"{ENV_PREFIX}SESSION_TIMEOUT", 10.0),
             greeting=_env_str(f"{ENV_PREFIX}GREETING", "Hi, how can I help")
             or "Hi, how can I help",
             tts_command=_env_str(f"{ENV_PREFIX}TTS_COMMAND", "spd-say") or "spd-say",
+            tts_cooldown_seconds=_env_float(f"{ENV_PREFIX}TTS_COOLDOWN", 0.5),
         )

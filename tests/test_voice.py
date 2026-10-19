@@ -110,3 +110,29 @@ def test_engine_is_finalized_on_stop(tmp_path) -> None:
     recognizer.stop()
 
     assert engine.finalized is True
+
+
+def test_frames_are_forwarded_to_the_wake_callback(tmp_path) -> None:
+    frames: list[bytes] = []
+    frame_event = threading.Event()
+
+    def on_frame(frame: bytes) -> None:
+        frames.append(frame)
+        frame_event.set()
+
+    recognizer = VoiceCommandRecognizer(
+        Config(model_path=tmp_path),
+        lambda *_: None,
+        on_frame=on_frame,
+        engine_factory=lambda: FakeEngine([]),
+        stream_factory=lambda _recognizer: FakeStream(),
+    )
+
+    recognizer.start()
+    try:
+        recognizer.audio_callback(b"frame", 0, None, None)
+        assert frame_event.wait(timeout=3.0)
+    finally:
+        recognizer.stop()
+
+    assert frames == [b"frame"]

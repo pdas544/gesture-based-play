@@ -48,6 +48,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print player capabilities and exit",
     )
     parser.add_argument(
+        "--no-wake",
+        action="store_true",
+        help="Disable the wake word and accept commands continuously",
+    )
+    parser.add_argument(
+        "--wake-engine",
+        choices=["auto", "openwakeword", "vosk"],
+        default=None,
+        help="Wake-word engine (default: auto)",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -74,6 +85,13 @@ def print_banner(app: Application, output: Callable[[str], None]) -> None:
     output("")
     output("Keyboard controls: 't' cycle target, 'q' quit, Ctrl+C quit")
     output("=" * 60)
+
+    if app.config.wake_enabled:
+        output(f"Wake word: {app.assistant.wake_description}")
+        timeout = app.config.session_timeout_seconds
+        output(f"  Say the wake word; commands time out after {timeout:.0f}s.")
+    else:
+        output("Wake word: disabled (commands accepted continuously)")
 
     if not app.backend.is_available():
         output("playerctl not found. Install it for media control: sudo apt install playerctl")
@@ -128,6 +146,8 @@ def run_diagnose(app: Application, output: Callable[[str], None]) -> None:
     playerctl_path = getattr(app.backend, "path", None)
     output(f"playerctl: {playerctl_path or 'not found'}")
     output(f"volume backend: {app.config.volume_backend} (step {app.config.volume_step_percent}%)")
+    output(f"wake word: {app.assistant.wake_description}")
+    output(f"session timeout: {app.config.session_timeout_seconds:.1f}s")
 
     players = app.backend.list_players()
     if not players:
@@ -176,8 +196,11 @@ def run(
     """Start recognition and run the interactive console until quit."""
     print_banner(app, output)
 
-    if app.recognizer.start():
-        output("Listening for voice commands. Speak clearly into your microphone.\n")
+    if app.assistant.start():
+        if app.config.wake_enabled:
+            output(f"Listening for the wake word ({app.assistant.wake_description}).\n")
+        else:
+            output("Listening for voice commands. Speak clearly into your microphone.\n")
     else:
         output("Voice recognition could not start. Press 'q' to quit.\n")
 
@@ -192,8 +215,9 @@ def run(
     except KeyboardInterrupt:
         output("\nInterrupted.")
     finally:
-        app.recognizer.stop()
+        app.assistant.stop()
         output("Exiting. Goodbye!")
+
     return 0
 
 
@@ -209,6 +233,10 @@ def main(argv: list[str] | None = None) -> int:
         overrides["preferred_player"] = args.player
     if args.no_focused:
         overrides["prefer_focused_player"] = False
+    if args.no_wake:
+        overrides["wake_enabled"] = False
+    if args.wake_engine is not None:
+        overrides["wake_engine"] = args.wake_engine
     if overrides:
         config = replace(config, **overrides)
 
