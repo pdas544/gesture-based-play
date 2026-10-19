@@ -79,6 +79,10 @@ class Config:
     prefer_focused_player: bool = True
     volume_backend: str = "auto"  # auto | system | mpris
     volume_step_percent: int = 5
+    wake_enabled: bool = True
+    session_timeout_seconds: float = 10.0
+    greeting: str = "Hi, how can I help"
+    tts_command: str = "spd-say"
 
     @classmethod
     def from_env(cls) -> Config:
@@ -93,4 +97,9 @@ class Config:
             prefer_focused_player=_env_bool(f"{ENV_PREFIX}PREFER_FOCUSED_PLAYER", True),
             volume_backend=_env_str(f"{ENV_PREFIX}VOLUME_BACKEND", "auto") or "auto",
             volume_step_percent=_env_int(f"{ENV_PREFIX}VOLUME_STEP_PERCENT", 5),
+            wake_enabled=_env_bool(f"{ENV_PREFIX}WAKE_ENABLED", True),
+            session_timeout_seconds=_env_float(f"{ENV_PREFIX}SESSION_TIMEOUT", 10.0),
+            greeting=_env_str(f"{ENV_PREFIX}GREETING", "Hi, how can I help")
+            or "Hi, how can I help",
+            tts_command=_env_str(f"{ENV_PREFIX}TTS_COMMAND", "spd-say") or "spd-say",
         )
