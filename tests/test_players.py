@@ -5,8 +5,10 @@ from types import SimpleNamespace
 from gesture_media_control.intents import Intent
 from gesture_media_control.players import (
     CommandResult,
+    PlayerCapabilities,
     PlayerctlBackend,
     PlayerResolver,
+    parse_player_capabilities,
 )
 
 
@@ -93,6 +95,45 @@ def test_backend_execute_handles_oserror() -> None:
 
     assert result.ok is False
     assert "not executable" in result.stderr
+
+
+def test_parse_player_capabilities() -> None:
+    raw = (
+        "({'CanControl': <true>, 'CanGoNext': <false>, 'CanGoPrevious': <false>, "
+        "'CanPlay': <true>, 'CanPause': <true>})"
+    )
+
+    assert parse_player_capabilities(raw) == PlayerCapabilities(
+        can_control=True,
+        can_play=True,
+        can_pause=True,
+        can_go_next=False,
+        can_go_previous=False,
+    )
+
+
+def test_parse_player_capabilities_rejects_garbage() -> None:
+    assert parse_player_capabilities("error: no such name") is None
+
+
+def test_backend_reads_capabilities_via_gdbus() -> None:
+    run = FakeRun(stdout="({'CanGoNext': <false>, 'CanGoPrevious': <true>})")
+    backend = PlayerctlBackend("/usr/bin/playerctl", gdbus_path="/usr/bin/gdbus", run=run)
+
+    capabilities = backend.get_capabilities("brave.instance2")
+
+    assert capabilities is not None
+    assert capabilities.can_go_next is False
+    assert capabilities.can_go_previous is True
+    assert run.calls[0][0] == "/usr/bin/gdbus"
+    assert "org.mpris.MediaPlayer2.brave.instance2" in run.calls[0]
+
+
+def test_backend_capabilities_unavailable_without_gdbus() -> None:
+    backend = PlayerctlBackend("/usr/bin/playerctl", gdbus_path=None, run=FakeRun())
+    backend._gdbus = None
+
+    assert backend.get_capabilities("spotify") is None
 
 
 def test_resolver_returns_none_without_players() -> None:

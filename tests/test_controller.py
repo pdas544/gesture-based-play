@@ -4,15 +4,20 @@ import logging
 
 from gesture_media_control.controller import MediaController
 from gesture_media_control.intents import Intent, IntentMatcher
-from gesture_media_control.players import CommandResult, PlayerResolver
+from gesture_media_control.players import (
+    CommandResult,
+    PlayerCapabilities,
+    PlayerResolver,
+)
 from gesture_media_control.state import StateStore
 
 
 class FakeBackend:
-    def __init__(self, players=(), available=True, result=None) -> None:
+    def __init__(self, players=(), available=True, result=None, capabilities=None) -> None:
         self._players = list(players)
         self.available = available
         self.result = result or CommandResult(0)
+        self.capabilities = capabilities
         self.executed: list[tuple[str, Intent]] = []
 
     def is_available(self) -> bool:
@@ -22,7 +27,10 @@ class FakeBackend:
         return list(self._players)
 
     def get_status(self, _player: str) -> str | None:
-        return None
+        return "Playing"
+
+    def get_capabilities(self, _player: str) -> PlayerCapabilities | None:
+        return self.capabilities
 
     def execute(self, player: str, intent: Intent) -> CommandResult:
         self.executed.append((player, intent))
@@ -132,3 +140,72 @@ def test_backend_failure_returns_false_and_does_not_record() -> None:
 
     assert controller.handle_phrase("play") is False
     assert controller._state.snapshot().last_intent is None
+
+
+class FakeVolume:
+    def __init__(self, result=None) -> None:
+        self.result = result or CommandResult(0)
+        self.calls: list[Intent] = []
+
+    def change(self, intent: Intent) -> CommandResult:
+        self.calls.append(intent)
+        return self.result
+
+
+def test_volume_intent_uses_volume_backend() -> None:
+    backend = FakeBackend(["spotify"])
+    volume = FakeVolume()
+    controller = MediaController(
+        backend,
+        PlayerResolver(backend),
+        IntentMatcher(),
+        StateStore(),
+        volume_backend=volume,
+    )
+
+    assert controller.handle_phrase("volume up") is True
+    assert volume.calls == [Intent.VOLUME_UP]
+    assert backend.executed == []
+
+
+def test_volume_failure_is_reported() -> None:
+    backend = FakeBackend(["spotify"])
+    volume = FakeVolume(CommandResult(1, stderr="no sink"))
+    controller = MediaController(
+        backend,
+        PlayerResolver(backend),
+        IntentMatcher(),
+        StateStore(),
+        volume_backend=volume,
+    )
+
+    assert controller.handle_phrase("volume down") is False
+
+
+def test_next_warns_when_player_cannot_skip(caplog) -> None:
+    backend = FakeBackend(["brave"], capabilities=PlayerCapabilities(can_go_next=False))
+    controller = make_controller(backend)
+
+    with caplog.at_level(logging.WARNING):
+        assert controller.handle_phrase("next") is False
+
+    assert backend.executed == []
+    assert any("cannot skip forward" in record.message for record in caplog.records)
+
+
+def test_previous_warns_when_player_cannot_skip(caplog) -> None:
+    backend = FakeBackend(["brave"], capabilities=PlayerCapabilities(can_go_previous=False))
+    controller = make_controller(backend)
+
+    with caplog.at_level(logging.WARNING):
+        assert controller.handle_phrase("previous") is False
+
+    assert any("cannot skip back" in record.message for record in caplog.records)
+
+
+def test_next_executes_when_supported() -> None:
+    backend = FakeBackend(["spotify"], capabilities=PlayerCapabilities(can_go_next=True))
+    controller = make_controller(backend)
+
+    assert controller.handle_phrase("next") is True
+    assert backend.executed == [("spotify", Intent.NEXT)]

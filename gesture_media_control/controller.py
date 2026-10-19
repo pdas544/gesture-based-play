@@ -64,6 +64,9 @@ class MediaController:
             logger.info("Pause other players or start playback in the player you want to control.")
             return False
 
+        if not self._skip_supported(target, intent):
+            return False
+
         result = self._backend.execute(target, intent)
         if not result.ok:
             logger.error(
@@ -114,4 +117,21 @@ class MediaController:
             )
         else:
             logger.info("Executed %s (system volume)", intent.value)
+        return True
+
+    def _skip_supported(self, target: str, intent: Intent) -> bool:
+        """Warn and return False when the player says it cannot skip."""
+        lookup = getattr(self._backend, "get_capabilities", None)
+        if lookup is None:
+            return True
+        capabilities = lookup(target)
+        if capabilities is None:
+            return True
+
+        if intent == Intent.NEXT and capabilities.can_go_next is False:
+            logger.warning("%s reports this track cannot skip forward (CanGoNext=false).", target)
+            return False
+        if intent == Intent.PREVIOUS and capabilities.can_go_previous is False:
+            logger.warning("%s reports this track cannot skip back (CanGoPrevious=false).", target)
+            return False
         return True

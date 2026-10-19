@@ -43,6 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable focused-window player detection",
     )
     parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="Print player capabilities and exit",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -115,6 +120,36 @@ def _list_players(app: Application, output: Callable[[str], None]) -> None:
         output(f"  - {player} ({status})")
 
 
+def run_diagnose(app: Application, output: Callable[[str], None]) -> None:
+    """Print player capabilities and the active volume configuration."""
+    output("=" * 60)
+    output("Diagnostics")
+    output("=" * 60)
+    playerctl_path = getattr(app.backend, "path", None)
+    output(f"playerctl: {playerctl_path or 'not found'}")
+    output(f"volume backend: {app.config.volume_backend} (step {app.config.volume_step_percent}%)")
+
+    players = app.backend.list_players()
+    if not players:
+        output("players: none")
+        return
+
+    lookup = getattr(app.backend, "get_capabilities", None)
+    for player in players:
+        status = app.backend.get_status(player) or "unknown"
+        output(f"- {player}: {status}")
+        capabilities = lookup(player) if lookup else None
+        if capabilities is None:
+            output("    capabilities: unavailable")
+            continue
+        output(
+            "    "
+            f"can_control={capabilities.can_control} "
+            f"can_go_next={capabilities.can_go_next} "
+            f"can_go_previous={capabilities.can_go_previous}"
+        )
+
+
 def _handle_command(app: Application, line: str, output: Callable[[str], None]) -> bool:
     """Process one console command; return False to quit."""
     if line == "q":
@@ -177,4 +212,8 @@ def main(argv: list[str] | None = None) -> int:
     if overrides:
         config = replace(config, **overrides)
 
-    return run(build_application(config))
+    app = build_application(config)
+    if args.diagnose:
+        run_diagnose(app, print)
+        return 0
+    return run(app)

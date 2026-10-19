@@ -3,13 +3,15 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from gesture_media_control import cli
-from gesture_media_control.players import CommandResult
+from gesture_media_control.players import CommandResult, PlayerCapabilities
 
 
 class FakeBackend:
-    def __init__(self, players=(), statuses=None) -> None:
+    def __init__(self, players=(), statuses=None, capabilities=None) -> None:
         self._players = list(players)
         self._statuses = dict(statuses or {})
+        self._capabilities = capabilities
+        self.path = "/usr/bin/playerctl"
 
     def is_available(self) -> bool:
         return True
@@ -20,15 +22,25 @@ class FakeBackend:
     def get_status(self, player: str) -> str | None:
         return self._statuses.get(player)
 
+    def get_capabilities(self, _player: str) -> PlayerCapabilities | None:
+        return self._capabilities
+
     def execute(self, player: str, intent) -> CommandResult:  # pragma: no cover - unused
         return CommandResult(0)
 
 
 class StubApp:
-    def __init__(self, players=(), statuses=None, preferred=None, override=None) -> None:
-        self.backend = FakeBackend(players, statuses)
+    def __init__(
+        self, players=(), statuses=None, preferred=None, override=None, capabilities=None
+    ) -> None:
+        self.backend = FakeBackend(players, statuses, capabilities)
         self.resolver = SimpleNamespace(runtime_override=override, last_target=None)
-        self.config = SimpleNamespace(preferred_player=preferred, prefer_focused_player=True)
+        self.config = SimpleNamespace(
+            preferred_player=preferred,
+            prefer_focused_player=True,
+            volume_backend="auto",
+            volume_step_percent=5,
+        )
 
     def status_line(self) -> str:
         return "State: Idle | Last command: — | Target: auto"
@@ -115,3 +127,26 @@ def test_parser_accepts_documented_flags() -> None:
     assert args.player == "vlc"
     assert args.no_focused is True
     assert args.log_level == "DEBUG"
+
+
+def test_diagnose_reports_capabilities() -> None:
+    app = StubApp(
+        ["brave.instance2"],
+        statuses={"brave.instance2": "Paused"},
+        capabilities=PlayerCapabilities(can_go_next=False, can_go_previous=False),
+    )
+    output: list[str] = []
+
+    cli.run_diagnose(app, output.append)
+
+    text = "\n".join(output)
+    assert "playerctl: /usr/bin/playerctl" in text
+    assert "volume backend: auto" in text
+    assert "brave.instance2: Paused" in text
+    assert "can_go_next=False" in text
+
+
+def test_diagnose_with_no_players() -> None:
+    output: list[str] = []
+    cli.run_diagnose(StubApp(), output.append)
+    assert "players: none" in "\n".join(output)

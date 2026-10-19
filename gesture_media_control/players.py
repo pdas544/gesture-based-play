@@ -8,6 +8,7 @@ target-selection heuristics and depends only on the backend + focus detector.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -42,6 +43,37 @@ class CommandResult:
         return self.returncode == 0
 
 
+@dataclass(frozen=True)
+class PlayerCapabilities:
+    """Subset of MPRIS capability flags relevant to command support."""
+
+    can_control: bool | None = None
+    can_play: bool | None = None
+    can_pause: bool | None = None
+    can_go_next: bool | None = None
+    can_go_previous: bool | None = None
+
+
+def _parse_bool(text: str, property_name: str) -> bool | None:
+    match = re.search(rf"'{re.escape(property_name)}': <(true|false)>", text)
+    if match is None:
+        return None
+    return match.group(1) == "true"
+
+
+def parse_player_capabilities(raw_output: str) -> PlayerCapabilities | None:
+    """Parse the GVariant reply from ``Properties.GetAll`` for the Player interface."""
+    if "CanControl" not in raw_output and "CanGoNext" not in raw_output:
+        return None
+    return PlayerCapabilities(
+        can_control=_parse_bool(raw_output, "CanControl"),
+        can_play=_parse_bool(raw_output, "CanPlay"),
+        can_pause=_parse_bool(raw_output, "CanPause"),
+        can_go_next=_parse_bool(raw_output, "CanGoNext"),
+        can_go_previous=_parse_bool(raw_output, "CanGoPrevious"),
+    )
+
+
 class PlayerBackend(Protocol):
     """Abstract media-player backend."""
 
@@ -51,14 +83,24 @@ class PlayerBackend(Protocol):
 
     def get_status(self, player: str) -> str | None: ...
 
+    def get_capabilities(self, player: str) -> PlayerCapabilities | None: ...
+
     def execute(self, player: str, intent: Intent) -> CommandResult: ...
 
 
 class PlayerctlBackend:
     """Concrete backend that drives MPRIS players through ``playerctl``."""
 
-    def __init__(self, playerctl_path: str | None = None, *, run=subprocess.run) -> None:
-        self._path = playerctl_path if playerctl_path is not None else shutil.which("playerctl")
+    def __init__(
+        self,
+        playerctl_path: str | None = None,
+        *,
+        gdbus_path: str | None = None,
+        run=subprocess.run,
+        which=shutil.which,
+    ) -> None:
+        self._path = playerctl_path if playerctl_path is not None else which("playerctl")
+        self._gdbus = gdbus_path if gdbus_path is not None else which("gdbus")
         self._run = run
 
     @property
@@ -88,6 +130,33 @@ class PlayerctlBackend:
         if not result.ok:
             return None
         return result.stdout.strip()
+
+    def get_capabilities(self, player: str) -> PlayerCapabilities | None:
+        """Read MPRIS Player capability flags via ``gdbus`` (best effort)."""
+        if not self._gdbus:
+            return None
+        try:
+            completed = self._run(
+                [
+                    self._gdbus,
+                    "call",
+                    "--session",
+                    "--dest",
+                    f"org.mpris.MediaPlayer2.{player}",
+                    "--object-path",
+                    "/org/mpris/MediaPlayer2",
+                    "--method",
+                    "org.freedesktop.DBus.Properties.GetAll",
+                    "org.mpris.MediaPlayer2.Player",
+                ],
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return None
+        if getattr(completed, "returncode", 1) != 0:
+            return None
+        return parse_player_capabilities(getattr(completed, "stdout", ""))
 
     def execute(self, player: str, intent: Intent) -> CommandResult:
         action = PLAYERCTL_ACTIONS.get(intent)
